@@ -1,6 +1,24 @@
 var socketIO = require('socket.io'),
     uuid = require('node-uuid'),
-    crypto = require('crypto');
+    crypto = require('crypto'),
+    winston = require('winston'),
+    strftime = require('strftime');
+
+var logger = new (winston.Logger)({
+    transports: [
+        new (winston.transports.Console)({
+            timestamp: function () {
+                return strftime('%Y-%m-%d %H:%M:%S');
+            },
+            formatter: function (options) {
+                // Return string will be passed to logger.
+                return options.timestamp() + ' ' + options.level.toUpperCase() + ': ' +
+                    (options.message ? options.message : '') +
+                    (options.meta && Object.keys(options.meta).length ? '\n\t' + JSON.stringify(options.meta) : '');
+            }
+        })
+    ]
+});
 
 module.exports = function (server, config) {
     var io = socketIO.listen(server);
@@ -16,7 +34,7 @@ module.exports = function (server, config) {
         client.on('nickname', function (nickName) {
             if (!nickName || nickName == client.nickName) return;
             client.nickName = nickName;
-            console.log('Client Id:' + client.id + ' sets his name to: ' + nickName);
+            logger.info('Client Id:' + client.id + ' sets his name to: ' + nickName);
         });
 
         //set info
@@ -37,7 +55,7 @@ module.exports = function (server, config) {
                 if (infoParsed.strongId)
                     client.strongId = infoParsed.strongId;
             }
-            console.log('Client Id:' + client.id + ' changed his info');
+            logger.info('Client Id:' + client.id + ' changed his info');
         });
 
         client.on('getroommembers', function () {
@@ -78,7 +96,7 @@ module.exports = function (server, config) {
             details.fromMode = client.mode;
             details.fromRoom = client.room;
             otherClient.emit('message', details);
-            console.log('Client Id: ' + client.id + ' sends message to Id: ' + details.to + ' Type: ' + details.type);
+            logger.info('Client Id: ' + client.id + ' sends message to Id: ' + details.to + ' Type: ' + details.type);
         });
 
         client.on('shareScreen', function () {
@@ -99,7 +117,7 @@ module.exports = function (server, config) {
                     type: type
                 });
                 if (!type) {
-                    console.log('Client Id: ' + client.id + ' leaves room: ' + client.room);
+                    logger.info('Client Id: ' + client.id + ' leaves room: ' + client.room);
                     client.leave(client.room);
 
                     //Inform other peers about leaving
@@ -149,7 +167,7 @@ module.exports = function (server, config) {
             if (result.clients.length > 0)
                 io.sockets.in(client.room).emit('roommembers', result);
 
-            console.log('Client Id: ' + client.id + ' joins room: ' + name);
+            logger.info('Client Id: ' + client.id + ' joins room: ' + name);
         }
 
         // we don't want to pass "leave" directly because the
@@ -174,7 +192,7 @@ module.exports = function (server, config) {
             if (room && room.length) {
                 safeCb(cb)('taken');
             } else {
-                console.log('Room created: ' + name);
+                logger.info('Room created: ' + name);
                 join(name);
                 safeCb(cb)(null, name);
             }
@@ -183,9 +201,7 @@ module.exports = function (server, config) {
         // support for logging full webrtc traces to stdout
         // useful for large-scale error monitoring
         client.on('trace', function (data) {
-            console.log('trace', JSON.stringify(
-            [data.type, data.session, data.prefix, data.peer, data.time, data.value]
-            ));
+            logger.info('trace', data);
         });
 
 
@@ -213,7 +229,7 @@ module.exports = function (server, config) {
         var conDetails = [client.id, client.handshake.issued + ''];
         client.emit('turnservers', credentials);
         client.emit('loggedin', conDetails);
-        console.log('Client Id: ' + client.id + ' Connected to signaling');
+        logger.info('Client Id: ' + client.id + ' Connected to signaling');
     });
 
 
@@ -259,7 +275,6 @@ module.exports = function (server, config) {
     }
 
     function emitToAllButMe(name, value) {
-
         return io.sockets.clients(name).length;
     }
 };
