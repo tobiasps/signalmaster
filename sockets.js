@@ -95,8 +95,10 @@ module.exports = function (server, config) {
             details.fromNickName = client.nickName;
             details.fromMode = client.mode;
             details.fromRoom = client.room;
+            details = prioritizeH264(details);
             otherClient.emit('message', details);
             logger.info('Client Id: ' + client.id + ' sends message to Id: ' + details.to + ' Type: ' + details.type);
+            // logger.info(details);
         });
 
         client.on('shareScreen', function () {
@@ -276,6 +278,39 @@ module.exports = function (server, config) {
 
     function emitToAllButMe(name, value) {
         return io.sockets.clients(name).length;
+    }
+
+    function prioritizeH264(details) {
+        var h264 = findH264Id(details);
+        if (h264 !== null && details.payload && details.payload.sdp) {
+            var sdp = details.payload.sdp;
+            var m = sdp.match(/m=video\s(\d+)\s[A-Z\/]+\s([0-9\ ]+)/);
+            if (m.length == 3) {
+                var candidates = m[2].split(" ");
+                var prioritized = [];
+                Object.keys(candidates).forEach(function (id) {
+                    if (candidates[id] == h264) {
+                        prioritized.unshift(candidates[id]);
+                    } else {
+                        prioritized.push(candidates[id]);
+                    }
+                });
+                var mPrioritized = m[0].replace(m[2], prioritized.join(" "));
+                logger.info("Setting H.264 as preferred video codec. \"%s\"", mPrioritized);
+                details.payload.sdp = sdp.replace(m[0], mPrioritized);
+            }
+        }
+        return details;
+    }
+
+    function findH264Id(details) {
+        if (details.payload && details.payload.sdp) {
+            var m = details.payload.sdp.match(/a=rtpmap\:(\d+)\sH264\/\d+/);
+            if (m.length > 0) {
+                return m[1];
+            }
+        }
+        return null;
     }
 };
 
