@@ -23,5 +23,6 @@
       "secret": "turnserversharedsecret",
       "expiry": 86400
     }
-  ]
+  ],
+  "codecPriority": ["VP9", "H264", "VP8"]
 }
