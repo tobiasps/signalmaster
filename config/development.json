@@ -24,5 +24,6 @@
       "expiry": 86400
     }
   ],
-  "codecPriority": ["VP8", "H264", "VP9"]
+  "codecPriority": ["VP8", "H264", "VP9"],
+  "maxAverageBitRate": 128000
 }

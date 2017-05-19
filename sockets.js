@@ -2,7 +2,8 @@ var socketIO = require('socket.io'),
     uuid = require('node-uuid'),
     crypto = require('crypto'),
     winston = require('winston'),
-    strftime = require('strftime');
+    strftime = require('strftime'),
+    sdptransform = require('sdp-transform');
 
 var logger = new (winston.Logger)({
     transports: [
@@ -95,7 +96,12 @@ module.exports = function (server, config) {
             details.fromNickName = client.nickName;
             details.fromMode = client.mode;
             details.fromRoom = client.room;
-            details = prioritizeVideoCodecs(details);
+            try {
+                details = prioritizeVideoCodecs(details);
+                details = setOpusMaxAvgBitrate(details);
+            } catch (e) {
+                logger.error(e);
+            }
             otherClient.emit('message', details);
             logger.info('Client Id: ' + client.id + ' sends message to Id: ' + details.to + ' Type: ' + details.type);
             // logger.info(details);
@@ -306,6 +312,48 @@ module.exports = function (server, config) {
             }
         }
         return details;
+    }
+
+    function setOpusMaxAvgBitrate(details) {
+        var maxAvgBitRate = config.maxAverageBitRate || 0;
+        if (maxAvgBitRate > 0) {
+            var id = findCodecId(details, "opus");
+            if (id && details.payload && details.payload.sdp) {
+                details.payload.sdp = alterFmtpConfig(details.payload.sdp, id, {"maxaveragebitrate": maxAvgBitRate});
+            }
+        }
+        return details;
+    }
+
+    function alterFmtpConfig(sdp, id, params) {
+        if (sdp.length > 0 && id && Object.keys(params).length > 0) {
+            var res = sdptransform.parse(sdp);
+            res.media.forEach(function (item) {
+                item.fmtp.some(function (fmtp) {
+                    if (fmtp.payload == id) {
+                        var origParams = sdptransform.parseParams(fmtp.config);
+                        Object.keys(params).forEach(function (key) {
+                            origParams[key] = params[key];
+                        });
+                        fmtp.config = writeParams(origParams);
+                        logger.info("FMTP for payload " + id + " set to: " + fmtp.config);
+                        return true; // break loop
+                    } else {
+                        return false; // continue loop
+                    }
+                });
+            });
+            sdp = sdptransform.write(res);
+        }
+        return sdp;
+    }
+
+    function writeParams(config) {
+        var params = [];
+        Object.keys(config).forEach(function (key) {
+            params.push(key + "=" + config[key]);
+        });
+        return params.join(";");
     }
 
     function findCodecId(details, codec) {
